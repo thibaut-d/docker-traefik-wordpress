@@ -1,0 +1,30 @@
+version: "3.3"
+
+networks:
+    traefik:
+        external: true
+
+services:
+
+  outer-whoami:
+    image: "containous/whoami"
+    container_name: "outer-whoami"
+    networks:
+      - "traefik"
+    env_file:
+      - ./.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # Get the routes from http
+      - "traefik.http.routers.outer-whoami.rule=Host(`${OUTER_WHOAMI_URL}`)"
+      - "traefik.http.routers.outer-whoami.entrypoints=web"
+      # Redirect these routes to https
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.outer-whoami.middlewares=redirect-to-https@docker"
+      # Get the routes from https
+      - "traefik.http.routers.outer-whoami-secured.rule=Host(`${OUTER_WHOAMI_URL}`)"
+      - "traefik.http.routers.outer-whoami-secured.entrypoints=web-secure"
+      # Apply autentificiation with http challenge
+      - "traefik.http.routers.outer-whoami-secured.tls=true"
+      - "traefik.http.routers.outer-whoami-secured.tls.certresolver=myhttpchallenge"

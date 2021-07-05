@@ -1,0 +1,149 @@
+version: '3'
+
+# This file is designed to work with Traefik.
+# It is a reverse proxy that is used on the server host several services.
+# If you need to dev locally, copy this file under a new name and adapt it.
+# To do so, add the port numbers and remove the tags
+
+networks:
+  # enable connection with Traefik
+  traefik:
+    external: true
+  # network for the app
+  mysitebackend:
+
+services:
+
+  # The Wordpress CMS itself
+  mysitewordpress:
+    build:
+      # call the Dockerfile in ./wordpress
+      context: ./wordpress
+    restart: always
+    logging:
+      # Configure the logs retention according to your needs
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ./.env
+    environment:
+      # Connect WordPress to the database
+      WORDPRESS_DB_HOST: mysitedb:3306
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+    volumes:
+      # link the content of WordPress in a directory to enable local modifications
+      - ./wordpress/data:/var/www/html
+    networks:
+      - traefik
+      - mysitebackend
+    depends_on:
+        - mysitedb
+        - mysiteredis
+    labels:
+      # The labels are usefull for Traefik only
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # Get the routes from http
+      - "traefik.http.routers.wordpressmysite.rule=Host(`${DOMAINE}`)"
+      - "traefik.http.routers.wordpressmysite.entrypoints=web"
+      # Redirect these routes to https
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.wordpressmysite.middlewares=redirect-to-https@docker"
+      # Get the routes from https
+      - "traefik.http.routers.wordpressmysite-secured.rule=Host(`${DOMAINE}`)"
+      - "traefik.http.routers.wordpressmysite-secured.entrypoints=web-secure"
+      # Apply autentificiation with http challenge
+      - "traefik.http.routers.wordpressmysite-secured.tls=true"
+      - "traefik.http.routers.wordpressmysite-secured.tls.certresolver=myhttpchallenge"
+
+  # The MySQL database
+  mysitedb:
+    # this is the database used by Wordpress
+    image: mysql:5.7
+    restart: always
+    logging:
+      # Configure the logs retention according to your needs
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ./.env
+    environment:
+      # Connect WordPrerss to the database
+      MYSQL_DATABASE: ${WORDPRESS_DB_NAME}
+      MYSQL_USER: ${WORDPRESS_DB_USER}
+      MYSQL_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      # Here, the database files are linked into a directory for direct access
+      # You probably prefer to use a docker volume instead
+      - ./db:/var/lib/mysql
+    networks:
+      - mysitebackend
+
+  # Redis, used as a cache engine, drastically improve page load times
+  # Install a Wordpress plugin like "W3 Total Cache" to get it working
+  mysiteredis:
+    image: redis:6
+    restart: always
+    logging:
+      # Configure the logs retention according to your needs
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ./.env
+    ports:
+      - "6379:6379"
+    networks:
+      - mysitebackend
+    # launch Redis in cache mode with :
+    #  - max memory up to 50% of your RAM if needed (--maxmemory 512mb)
+    #  - deleting oldest data when max memory is reached (--maxmemory-policy allkeys-lru)
+    entrypoint: redis-server --maxmemory 512mb -maxmemory-policy allkeys-lru
+    
+  # Graphical interface to the database
+  # Can be useful for debug  
+  mysitephpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    networks:
+      - mysitebackend
+      - traefik
+    depends_on:
+      - mysitedb
+    restart: always
+    logging:
+      # Configure the logs retention according to your needs
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ./.env
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+     - /sessions
+    labels:
+      # The labels are usefull for Traefik only
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # Get the data from port xxxx instead of port 80
+      # - "traefik.http.services.phpmyadminmysite.loadbalancer.server.port=8081"
+      # Get the routes from http
+      - "traefik.http.routers.phpmyadminmysite.rule=Host(`${PHPMYADMIN_DOMAIN}`)"
+      - "traefik.http.routers.phpmyadminmysite.entrypoints=web"
+      # Redirect these routes to https
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.phpmyadminmysite.middlewares=redirect-to-https@docker"
+      # Get the routes from https
+      - "traefik.http.routers.phpmyadminmysite-secured.rule=Host(`${PHPMYADMIN_DOMAIN}`)"
+      - "traefik.http.routers.phpmyadminmysite-secured.entrypoints=web-secure"
+      # Apply autentificiation with http challenge
+      - "traefik.http.routers.phpmyadminmysite-secured.tls=true"
+      - "traefik.http.routers.phpmyadminmysite-secured.tls.certresolver=myhttpchallenge"
