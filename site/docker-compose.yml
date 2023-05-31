@@ -103,7 +103,7 @@ services:
     # launch Redis in cache mode with :
     #  - max memory up to 50% of your RAM if needed (--maxmemory 512mb)
     #  - deleting oldest data when max memory is reached (--maxmemory-policy allkeys-lru)
-    entrypoint: redis-server --maxmemory 512mb -maxmemory-policy allkeys-lru
+    entrypoint: ["redis-server" "--maxmemory", "512mb" "--maxmemory-policy", "allkeys-lru"]
     
   # Graphical interface to the database
   # Can be useful for debug  
