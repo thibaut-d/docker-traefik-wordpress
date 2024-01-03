@@ -1,4 +1,4 @@
-FROM wordpress
+FROM wordpress:latest
 
 # printf statement mocks answering the prompts from the pecl install
 RUN printf "\n \n" | pecl install redis && docker-php-ext-enable redis
